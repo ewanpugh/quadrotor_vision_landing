@@ -20,6 +20,8 @@ class PID:
         
     def generate_output(self, feedback):
         
+        current_time = time.time()
+        
         if self.setpoint is None:
             raise ValueError('No setpoint value set')
         
@@ -28,7 +30,7 @@ class PID:
         p_term = error * self.Kp
         d_term = 0
         if self.last_time is not None:
-            time_delta = time.time() - self.last_time
+            time_delta = current_time - self.last_time
             self.i_term_sum += error * time_delta
 
             if self.last_error is not None:
@@ -46,7 +48,7 @@ class PID:
                        (self.Ki * self.i_term_sum) +
                        (self.Kd * d_term))
         
-        self.last_time = time.time()
+        self.last_time = current_time
         self.last_error = error
         
         return output_value
