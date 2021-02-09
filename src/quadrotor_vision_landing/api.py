@@ -55,28 +55,28 @@ class QuadcopterState(PX4):
         self.local_vel_sub = rospy.Subscriber('/mavros/local_position/velocity_body', TwistStamped, vel_cb)
 
     @classmethod
-    def current_state(cls, return_format='msg'):
+    def current_state(cls):
         global current_state
         while current_state is None:
             pass
         return current_state
 
     @classmethod
-    def current_pose(cls, return_format='msg'):
+    def current_pose(cls):
         global current_pose
         while current_pose is None:
             pass
         return current_pose
 
     @classmethod
-    def start_pose(cls, return_format='msg'):
+    def start_pose(cls):
         global start_pose
         while start_pose is None:
             pass
         return start_pose
 
     @classmethod
-    def current_velocity(cls, return_format='msg'):
+    def current_velocity(cls):
         global current_velocity
         while current_velocity is None:
             pass
