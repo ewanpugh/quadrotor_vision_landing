@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(px4_api)
+project(quadrotor_vision_landing)
 
 find_package(catkin REQUIRED COMPONENTS
   rospy
