@@ -6,6 +6,10 @@ import time
 
 class ComputerVision:
 
+    def __init__(self):
+        self.tracker = cv2.TrackerCSRT_create()
+        self.ok = None
+
     @staticmethod
     def geometry_helipad_detection(im):
         orig = im.copy()
@@ -24,11 +28,8 @@ class ComputerVision:
                     ((x, y), (h, w), _) = cv2.minAreaRect(contour)
                     ar = w / float(h)
                     if (ar > 0.75) & (ar < 0.85):
-                        h_list.append({'x': x, 'y': y, 'w': w, 'h': h})
-                        rect = cv2.minAreaRect(contour)
-                        box = cv2.boxPoints(rect)
-                        box = np.int0(box)
-                        orig = cv2.drawContours(orig, [box], 0, (255, 0, 0), 1)
+                        bounding_box = cv2.boundingRect(contour)
+                        h_list.append({'x': x, 'y': y, 'w': w, 'h': h, 'bounding_box': bounding_box})
                     else:
                         ellipse = cv2.fitEllipse(contour)
                         x, y = ellipse[0]
@@ -39,29 +40,42 @@ class ComputerVision:
             except:
                 pass
 
-        helipad_detected = False
-        helipad_centre = None
         for H in h_list:
-            circle_same_center_as_h_count = 0
             for circle in circles:
                 x_diff = abs(circle['x'] - H['x'])
                 y_diff = abs(circle['y'] - H['y'])
                 if (x_diff < 2) & (y_diff < 2):
-                    circle_same_center_as_h_count += 1
-            if circle_same_center_as_h_count == 2:
-                helipad_centre = (circle['x'], circle['y'])
-                helipad_detected = True
+                    helipad_centre = (circle['x'], circle['y'])
+                    helipad_bounding_box = H['bounding_box']
+                    return True, helipad_centre, helipad_bounding_box
 
-        return orig, helipad_detected, helipad_centre
+        return False, None, None
+
+    def init_tracker(self, frame, bounding_box):
+        self.tracker.init(frame, bounding_box)
+
+    def track_object(self, frame):
+
+        ok, bbox = self.tracker.update(frame)
+
+        if ok:
+            p1 = (int(bbox[0]), int(bbox[1]))
+            p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
+            cv2.rectangle(frame, p1, p2, (255, 0, 0), 2, 1)
+        else:
+            cv2.putText(frame, "Tracking failure detected", (100, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+        cv2.imshow('Helipad detection', frame)
+        cv2.waitKey(1)
 
 
 client = airsim.MultirotorClient()
 helipad_detector = ComputerVision()
-iteration = 1
-elapsed_detection_time = 0
-number_frames_to_run = 10
-while iteration <= number_frames_to_run:
-    print(iteration)
+
+initiate_tracker = False
+tracker_initiated = False
+cross_val_frames = 10  # Cross validate tracker with detection every 10 frames
+tracker_frames = 0
+while True:
     responses = client.simGetImages([airsim.ImageRequest("bottom_center", airsim.ImageType.Scene, False, False)])
     response = responses[0]
 
@@ -69,12 +83,20 @@ while iteration <= number_frames_to_run:
 
     img_rgb = img1d.reshape(response.height, response.width, 3)
 
-    start = time.time()
-    img, detected_boolean, helipad_centroid = helipad_detector.geometry_helipad_detection(img_rgb)
-    elapsed_detection_time += (time.time() - start)
-    print('\t{}'.format(detected_boolean))
-    print('\t{}'.format(helipad_centroid))
-    iteration += 1
-
-
-print('\nDetection time = {}s'.format(elapsed_detection_time/number_frames_to_run))
+    if not tracker_initiated:
+        detected_boolean, helipad_centroid, bb = helipad_detector.geometry_helipad_detection(img_rgb)
+        print(detected_boolean)
+        if detected_boolean:
+            initiate_tracker = True
+            if initiate_tracker & (not tracker_initiated):
+                helipad_detector.init_tracker(img_rgb, bb)
+                tracker_initiated = True
+    else:
+        if tracker_frames % cross_val_frames != 0:
+            helipad_detector.track_object(img_rgb)
+        else:
+            detected_boolean, helipad_centroid, bb = helipad_detector.geometry_helipad_detection(img_rgb)
+            if detected_boolean:
+                helipad_detector.init_tracker(img_rgb, bb)
+            helipad_detector.track_object(img_rgb)
+        tracker_frames += 1
