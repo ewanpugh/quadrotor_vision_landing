@@ -1,7 +1,4 @@
 import cv2
-import numpy as np
-import airsim
-import time
 
 
 class ComputerVision:
@@ -57,46 +54,4 @@ class ComputerVision:
     def track_object(self, frame):
 
         ok, bbox = self.tracker.update(frame)
-
-        if ok:
-            p1 = (int(bbox[0]), int(bbox[1]))
-            p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
-            cv2.rectangle(frame, p1, p2, (255, 0, 0), 2, 1)
-        else:
-            cv2.putText(frame, "Tracking failure detected", (100, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
-        cv2.imshow('Helipad detection', frame)
-        cv2.waitKey(1)
-
-
-client = airsim.MultirotorClient()
-helipad_detector = ComputerVision()
-
-initiate_tracker = False
-tracker_initiated = False
-cross_val_frames = 10  # Cross validate tracker with detection every 10 frames
-tracker_frames = 0
-while True:
-    responses = client.simGetImages([airsim.ImageRequest("bottom_center", airsim.ImageType.Scene, False, False)])
-    response = responses[0]
-
-    img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
-
-    img_rgb = img1d.reshape(response.height, response.width, 3)
-
-    if not tracker_initiated:
-        detected_boolean, helipad_centroid, bb = helipad_detector.geometry_helipad_detection(img_rgb)
-        print(detected_boolean)
-        if detected_boolean:
-            initiate_tracker = True
-            if initiate_tracker & (not tracker_initiated):
-                helipad_detector.init_tracker(img_rgb, bb)
-                tracker_initiated = True
-    else:
-        if tracker_frames % cross_val_frames != 0:
-            helipad_detector.track_object(img_rgb)
-        else:
-            detected_boolean, helipad_centroid, bb = helipad_detector.geometry_helipad_detection(img_rgb)
-            if detected_boolean:
-                helipad_detector.init_tracker(img_rgb, bb)
-            helipad_detector.track_object(img_rgb)
-        tracker_frames += 1
+        return bbox
