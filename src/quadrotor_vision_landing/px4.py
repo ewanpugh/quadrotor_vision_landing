@@ -1,8 +1,8 @@
 import rospy
 import time
 from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
-from mavros_msgs.msg import State
-from mavros_msgs.srv import CommandBool, SetMode
+from mavros_msgs.msg import State, ParamValue
+from mavros_msgs.srv import CommandBool, SetMode, ParamGet, ParamSet
 
 current_state = None
 current_pose = None
@@ -33,16 +33,20 @@ class PX4:
         rospy.init_node(node_name, anonymous=True)
         self.rate = rospy.Rate(rate)
 
-    @classmethod
-    def quadcopter_state(cls):
+    @staticmethod
+    def quadcopter_state():
         return QuadcopterState()
 
-    @classmethod
-    def quadcopter_control(cls):
+    @staticmethod
+    def quadcopter_control():
         return QuadcopterCommand()
 
-    @classmethod
-    def procedures(cls):
+    @staticmethod
+    def pid():
+        return PID()
+
+    @staticmethod
+    def procedures():
         return Procedures()
 
 
@@ -54,29 +58,29 @@ class QuadcopterState(PX4):
         self.pose_publisher = rospy.Subscriber('mavros/local_position/pose', PoseStamped, pose_cb)
         self.local_vel_sub = rospy.Subscriber('/mavros/local_position/velocity_body', TwistStamped, vel_cb)
 
-    @classmethod
-    def current_state(cls):
+    @staticmethod
+    def current_state():
         global current_state
         while current_state is None:
             pass
         return current_state
 
-    @classmethod
-    def current_pose(cls):
+    @staticmethod
+    def current_pose():
         global current_pose
         while current_pose is None:
             pass
         return current_pose
 
-    @classmethod
-    def start_pose(cls):
+    @staticmethod
+    def start_pose():
         global start_pose
         while start_pose is None:
             pass
         return start_pose
 
-    @classmethod
-    def current_velocity(cls):
+    @staticmethod
+    def current_velocity():
         global current_velocity
         while current_velocity is None:
             pass
@@ -94,38 +98,36 @@ class QuadcopterCommand(PX4):
         self.mode_service = rospy.ServiceProxy('mavros/set_mode', SetMode)
 
     def publish_pose(self, x=None, y=None, z=None, x_orient=None, y_orient=None, z_orient=None, w_orient=None):
+        pose_dict = {'x': x, 'y': y, 'z': z, 'x_orient': x_orient,
+                     'y_orient': y_orient, 'z_orient': z_orient, 'w_orient': w_orient}
+        for key in pose_dict.keys():
+            if pose_dict[key] is None:
+                pose_dict[key] = 0
+
         msg = PoseStamped()
-        if x is not None:
-            msg.pose.position.x = x
-        if y is not None:
-            msg.pose.position.y = y
-        if z is not None:
-            msg.pose.position.z = z
-        if x_orient is not None:
-            msg.pose.orientation.x = x_orient
-        if y_orient is not None:
-            msg.pose.orientation.y = y_orient
-        if z_orient is not None:
-            msg.pose.orientation.z = z_orient
-        if w_orient is not None:
-            msg.pose.orientation.w = w_orient
+        msg.pose.position.x = pose_dict['x']
+        msg.pose.position.y = pose_dict['y']
+        msg.pose.position.z = pose_dict['z']
+        msg.pose.orientation.x = pose_dict['x_orient']
+        msg.pose.orientation.y = pose_dict['y_orient']
+        msg.pose.orientation.z = pose_dict['z_orient']
+        msg.pose.orientation.w = pose_dict['w_orient']
 
         self.pose_publisher.publish(msg)
 
     def publish_velocity(self, x=None, y=None, z=None, x_ang=None, y_ang=None, z_ang=None):
+        vel_dict = {'x': x, 'y': y, 'z': z, 'x_ang': x_ang, 'y_ang': y_ang, 'z_ang': z_ang}
+        for key in vel_dict.keys():
+            if vel_dict[key] is None:
+                vel_dict[key] = 0
+
         msg = Twist()
-        if x is not None:
-            msg.linear.x = x
-        if y is not None:
-            msg.linear.y = y
-        if z is not None:
-            msg.linear.z = z
-        if x_ang is not None:
-            msg.angular.x = x_ang
-        if y_ang is not None:
-            msg.angular.y = y_ang
-        if z_ang is not None:
-            msg.angular.z = z_ang
+        msg.linear.x = vel_dict['x']
+        msg.linear.y = vel_dict['y']
+        msg.linear.z = vel_dict['z']
+        msg.angular.x = vel_dict['x_ang']
+        msg.angular.y = vel_dict['y_ang']
+        msg.angular.z = vel_dict['z_ang']
         self.velocity_publisher.publish(msg)
 
     def set_mode(self, mode):
@@ -133,6 +135,48 @@ class QuadcopterCommand(PX4):
 
     def arm(self, command):
         return self.arm_service(command)
+
+
+class PID(PX4):
+    def __init__(self):
+        super().__init__()
+        rospy.wait_for_service('mavros/param/get')
+        self.get_param_service = rospy.ServiceProxy('mavros/param/get', ParamGet)
+        rospy.wait_for_service('mavros/param/set')
+        self.set_param_service = rospy.ServiceProxy('mavros/param/set', ParamSet)
+
+    def get_gains(self, axis):
+        p_param = 'MC_{}RATE_P'.format(axis.upper())
+        i_param = 'MC_{}RATE_I'.format(axis.upper())
+        d_param = 'MC_{}RATE_D'.format(axis.upper())
+        gains = {}
+        for param in [p_param, i_param, d_param]:
+            response = self.get_param_service(param_id=param)
+            success = response.success
+            value = response.value.real
+            if success:
+                gains[param] = value
+            else:
+                gains[param] = 'ERROR'
+        return gains
+
+    def set_gains(self, axis, p=None, i=None, d=None):
+        p_param = {'name': 'MC_{}RATE_P'.format(axis.upper()), 'value': p}
+        i_param = {'name': 'MC_{}RATE_I'.format(axis.upper()), 'value': i}
+        d_param = {'name': 'MC_{}RATE_D'.format(axis.upper()), 'value': d}
+        gains = {}
+        for param in [p_param, i_param, d_param]:
+            if param['value'] is not None:
+                param_value = ParamValue()
+                param_value.real = float(param['value'])
+                response = self.set_param_service(param_id=param['name'], value=param_value)
+                success = response.success
+                value = response.value.real
+                if success:
+                    gains[param['name']] = value.real
+                else:
+                    gains[param['name']] = 'ERROR'
+        return gains
 
 
 class Procedures(PX4):
