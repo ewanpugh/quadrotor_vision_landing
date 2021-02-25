@@ -52,6 +52,5 @@ class ComputerVision:
         self.tracker.init(frame, bounding_box)
 
     def track_object(self, frame):
-
         ok, bbox = self.tracker.update(frame)
         return bbox
