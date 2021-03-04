@@ -4,8 +4,17 @@ import cv2
 class ComputerVision:
 
     def __init__(self):
-        self.tracker = cv2.TrackerCSRT_create()
+        self.tracker = None
         self.ok = None
+
+    def init_tracker(self, frame, bounding_box):
+        self.__dict__.pop('tracker')
+        self.tracker = cv2.TrackerCSRT_create()
+        self.tracker.init(frame, bounding_box)
+
+    def track_object(self, frame):
+        ok, bbox = self.tracker.update(frame)
+        return bbox
 
     @staticmethod
     def geometry_helipad_detection(im):
@@ -47,10 +56,3 @@ class ComputerVision:
                     return True, helipad_centre, helipad_bounding_box
 
         return False, None, None
-
-    def init_tracker(self, frame, bounding_box):
-        self.tracker.init(frame, bounding_box)
-
-    def track_object(self, frame):
-        ok, bbox = self.tracker.update(frame)
-        return bbox

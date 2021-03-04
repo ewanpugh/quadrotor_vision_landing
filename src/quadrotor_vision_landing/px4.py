@@ -115,7 +115,7 @@ class QuadcopterCommand(PX4):
 
         self.pose_publisher.publish(msg)
 
-    def publish_velocity(self, x=None, y=None, z=None, x_ang=None, y_ang=None, z_ang=None):
+    def publish_velocity(self, x=None, y=None, z=None, x_ang=None, y_ang=None, z_ang=None, simulate_motion=None):
         vel_dict = {'x': x, 'y': y, 'z': z, 'x_ang': x_ang, 'y_ang': y_ang, 'z_ang': z_ang}
         for key in vel_dict.keys():
             if vel_dict[key] is None:
@@ -123,7 +123,7 @@ class QuadcopterCommand(PX4):
 
         msg = Twist()
         msg.linear.x = vel_dict['x']
-        msg.linear.y = vel_dict['y']
+        msg.linear.y = vel_dict['y'] if simulate_motion is None else vel_dict['y'] + simulate_motion
         msg.linear.z = vel_dict['z']
         msg.angular.x = vel_dict['x_ang']
         msg.angular.y = vel_dict['y_ang']

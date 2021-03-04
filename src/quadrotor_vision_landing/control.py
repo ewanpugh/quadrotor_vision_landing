@@ -5,7 +5,15 @@ import numpy as np
 class Control:
 
     def __init__(self):
-        self.vel_scalar = 0.015
+        self.vel_scalar = 0.005
+        self.vel_vector = np.array([
+            [self.vel_scalar],
+            [self.vel_scalar],
+            [1000*self.vel_scalar],
+            [self.vel_scalar],
+            [self.vel_scalar],
+            [self.vel_scalar],
+        ])
         self.focal_length = 0.128
         self.pixel_ratio = 1
         self.cu = 128
@@ -35,8 +43,8 @@ class Control:
         x, y, w, h = bounding_box
 
         p1 = np.array([[x], [y]]).astype(int)
-        desired_p1 = np.array([[self.cu-(w/2)], [self.cv-(h/2)]]).astype(int)
-        # desired_p1 = np.array([[71], [0]]).astype(int)
+        # desired_p1 = np.array([[self.cu-(w/2)], [self.cv-(h/2)]]).astype(int)
+        desired_p1 = np.array([[71], [0]]).astype(int)
         p1_error = np.array([[int(p1[0] - desired_p1[0])],
                              [int(p1[1] - desired_p1[1])]])
         p1_depth = depth_image[p1[1][0], p1[0][0]]
@@ -44,8 +52,8 @@ class Control:
         p1_desired_jacobian = self.create_jacobian(desired_p1[0][0], desired_p1[1][0], p1_depth)
 
         p2 = np.array([[x], [y+h]]).astype(int)
-        desired_p2 = np.array([[self.cu-(w/2)], [self.cv+(h/2)]]).astype(int)
-        # desired_p2 = np.array([[71], [144]]).astype(int)
+        # desired_p2 = np.array([[self.cu-(w/2)], [self.cv+(h/2)]]).astype(int)
+        desired_p2 = np.array([[71], [144]]).astype(int)
         p2_error = np.array([[int(p2[0] - desired_p2[0])],
                              [int(p2[1] - desired_p2[1])]])
         p2_depth = depth_image[p2[1][0], p2[0][0]]
@@ -53,8 +61,8 @@ class Control:
         p2_desired_jacobian = self.create_jacobian(desired_p2[0][0], desired_p2[1][0], p2_depth)
 
         p3 = np.array([[x+w], [y]]).astype(int)
-        desired_p3 = np.array([[self.cu+(w/2)], [self.cv-(h/2)]]).astype(int)
-        # desired_p3 = np.array([[185], [0]]).astype(int)
+        # desired_p3 = np.array([[self.cu+(w/2)], [self.cv-(h/2)]]).astype(int)
+        desired_p3 = np.array([[185], [0]]).astype(int)
         p3_error = np.array([[int(p3[0] - desired_p3[0])],
                              [int(p3[1] - desired_p3[1])]])
         p3_depth = depth_image[p3[1][0], p3[0][0]]
@@ -62,8 +70,8 @@ class Control:
         p3_desired_jacobian = self.create_jacobian(desired_p3[0][0], desired_p3[1][0], p3_depth)
 
         p4 = np.array([[x + w], [y+h]]).astype(int)
-        desired_p4 = np.array([[self.cu + (w/2)], [self.cv + (h/2)]]).astype(int)
-        # desired_p4 = np.array([[185], [144]]).astype(int)
+        # desired_p4 = np.array([[self.cu + (w/2)], [self.cv + (h/2)]]).astype(int)
+        desired_p4 = np.array([[185], [144]]).astype(int)
         p4_error = np.array([[int(p4[0] - desired_p4[0])],
                              [int(p4[1] - desired_p4[1])]])
         p4_depth = depth_image[p4[1][0], p4[0][0]]
@@ -75,13 +83,13 @@ class Control:
         desired_point_jacobians = np.concatenate((p1_desired_jacobian, p2_desired_jacobian, p3_desired_jacobian,
                                                   p4_desired_jacobian))
         le = 0.5*np.linalg.pinv(point_jacobians+desired_point_jacobians)
-        output_vels = -self.vel_scalar * np.matmul(le, error)
+        output_vels = -self.vel_vector * np.matmul(le, error)
         points = {'p1': p1, 'desired_p1': desired_p1,
                   'p2': p2, 'desired_p2': desired_p2,
                   'p3': p3, 'desired_p3': desired_p3,
                   'p4': p4, 'desired_p4': desired_p4}
 
-        return output_vels, points
+        return np.around(output_vels, decimals=5), points
 
 
 class PID:
