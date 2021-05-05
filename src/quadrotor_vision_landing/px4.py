@@ -3,6 +3,7 @@ import time
 from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from mavros_msgs.msg import State, ParamValue
 from mavros_msgs.srv import CommandBool, SetMode, ParamGet, ParamSet
+import math
 
 current_state = None
 current_pose = None
@@ -10,12 +11,12 @@ current_velocity = None
 start_pose = None
 
 
-def state_cb(msg):
+def _state_cb(msg):
     global current_state
     current_state = msg
 
 
-def pose_cb(msg):
+def _pose_cb(msg):
     global current_pose
     global start_pose
     current_pose = msg
@@ -23,7 +24,7 @@ def pose_cb(msg):
         start_pose = msg
 
 
-def vel_cb(msg):
+def _vel_cb(msg):
     global current_velocity
     current_velocity = msg
 
@@ -54,12 +55,42 @@ class QuadcopterState(PX4):
 
     def __init__(self):
         super().__init__()
-        self.state_sub = rospy.Subscriber('mavros/state', State, state_cb)
-        self.pose_publisher = rospy.Subscriber('mavros/local_position/pose', PoseStamped, pose_cb)
-        self.local_vel_sub = rospy.Subscriber('/mavros/local_position/velocity_body', TwistStamped, vel_cb)
+        self.state_sub = rospy.Subscriber('mavros/state', State, _state_cb)
+        self.pose_publisher = rospy.Subscriber('mavros/local_position/pose', PoseStamped, _pose_cb)
+        self.local_vel_sub = rospy.Subscriber('/mavros/local_position/velocity_body', TwistStamped, _vel_cb)
+
+    @staticmethod
+    def current_heading():
+        """
+        Get the current heading of the quadcopter
+
+        :returns:
+            - heading (:py:class:`float`) - quadcopter heading
+        """
+        global current_pose
+        while current_pose is None:
+            pass
+        x = current_pose.pose.orientation.x
+        y = current_pose.pose.orientation.y
+        z = current_pose.pose.orientation.z
+        w = current_pose.pose.orientation.w
+
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw_z = math.atan2(t3, t4)
+        heading = math.degrees(yaw_z) - 90
+        if heading < 0:
+            heading += 360
+        return heading
 
     @staticmethod
     def current_state():
+        """
+        Get the last broadcasted state from the /mavros/state topic
+
+        :returns:
+            - state (:py:class:`mavros_msgs.msg.State`) - quadcopter state
+        """
         global current_state
         while current_state is None:
             pass
@@ -67,6 +98,12 @@ class QuadcopterState(PX4):
 
     @staticmethod
     def current_pose():
+        """
+        Get the last broadcasted pose from the /mavros/local_position/pose topic
+
+        :returns:
+            - pose (:py:class:`mavros_msgs.msg.PoseStamped`) - quadcopter pose
+        """
         global current_pose
         while current_pose is None:
             pass
@@ -74,6 +111,12 @@ class QuadcopterState(PX4):
 
     @staticmethod
     def start_pose():
+        """
+        Get the first broadcasted pose from the /mavros/local_position/pose topic
+
+        :returns:
+            - start pose (:py:class:`mavros_msgs.msg.PoseStamped`) - quadcopter start pose
+        """
         global start_pose
         while start_pose is None:
             pass
@@ -81,6 +124,12 @@ class QuadcopterState(PX4):
 
     @staticmethod
     def current_velocity():
+        """
+        Get the last broadcasted velocity from the /mavros/local_position/velocity_body topic
+
+        :returns:
+            - velocity (:py:class:`mavros_msgs.msg.TwistStamped`) - quadcopter velocity
+        """
         global current_velocity
         while current_velocity is None:
             pass
@@ -91,43 +140,70 @@ class QuadcopterCommand(PX4):
     def __init__(self):
         super().__init__()
         self.pose_publisher = rospy.Publisher('mavros/setpoint_position/local', PoseStamped, queue_size=10)
-        self.velocity_publisher = rospy.Publisher('mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=10)
+        self.velocity_publisher = rospy.Publisher('/autoland/desired_velocity', Twist, queue_size=10)
         rospy.wait_for_service('mavros/cmd/arming')
         self.arm_service = rospy.ServiceProxy('mavros/cmd/arming', CommandBool)
         rospy.wait_for_service('mavros/set_mode')
         self.mode_service = rospy.ServiceProxy('mavros/set_mode', SetMode)
 
+        rospy.wait_for_service('mavros/param/get')
+        self.get_param_service = rospy.ServiceProxy('mavros/param/get', ParamGet)
+        rospy.wait_for_service('mavros/param/set')
+        self.set_param_service = rospy.ServiceProxy('mavros/param/set', ParamSet)
+
+    def set_param(self, param_name, value):
+        param_value = ParamValue()
+        param_value.real = value
+        response = self.set_param_service(param_id=param_name, value=param_value)
+        return response.success, response.value.real
+
+    def get_param(self, param_name):
+        response = self.get_param_service(param_id=param_name)
+        return response.value.real
+
     def publish_pose(self, x=None, y=None, z=None, x_orient=None, y_orient=None, z_orient=None, w_orient=None):
         pose_dict = {'x': x, 'y': y, 'z': z, 'x_orient': x_orient,
                      'y_orient': y_orient, 'z_orient': z_orient, 'w_orient': w_orient}
-        for key in pose_dict.keys():
-            if pose_dict[key] is None:
-                pose_dict[key] = 0
 
         msg = PoseStamped()
-        msg.pose.position.x = pose_dict['x']
-        msg.pose.position.y = pose_dict['y']
-        msg.pose.position.z = pose_dict['z']
-        msg.pose.orientation.x = pose_dict['x_orient']
-        msg.pose.orientation.y = pose_dict['y_orient']
-        msg.pose.orientation.z = pose_dict['z_orient']
-        msg.pose.orientation.w = pose_dict['w_orient']
+        if pose_dict['x'] is not None:
+            msg.pose.position.x = x
+        if pose_dict['y'] is not None:
+            msg.pose.position.y = y
+        if pose_dict['z'] is not None:
+            msg.pose.position.z = z
+        if pose_dict['x_orient'] is not None:
+            msg.pose.orientation.x = pose_dict['x_orient']
+        if pose_dict['y_orient'] is not None:
+            msg.pose.orientation.y = pose_dict['y_orient']
+        if pose_dict['z_orient'] is not None:
+            msg.pose.orientation.z = pose_dict['z_orient']
+        if pose_dict['w_orient'] is not None:
+            msg.pose.orientation.w = pose_dict['w_orient']
 
         self.pose_publisher.publish(msg)
 
-    def publish_velocity(self, x=None, y=None, z=None, x_ang=None, y_ang=None, z_ang=None, simulate_motion=None):
+    def publish_velocity(self, x=None, y=None, z=None, x_ang=None, y_ang=None, z_ang=None):
         vel_dict = {'x': x, 'y': y, 'z': z, 'x_ang': x_ang, 'y_ang': y_ang, 'z_ang': z_ang}
         for key in vel_dict.keys():
             if vel_dict[key] is None:
                 vel_dict[key] = 0
 
+        # XYZ to NED
+        x_ned = vel_dict['y']
+        x_ang_ned = vel_dict['y_ang']
+        y_ned = -vel_dict['x']
+        y_ang_ned = vel_dict['x_ang']
+        z_ned = vel_dict['z']
+        z_ang_ned = vel_dict['z_ang']
+
         msg = Twist()
-        msg.linear.x = vel_dict['x']
-        msg.linear.y = vel_dict['y'] if simulate_motion is None else vel_dict['y'] + simulate_motion
-        msg.linear.z = vel_dict['z']
-        msg.angular.x = vel_dict['x_ang']
-        msg.angular.y = vel_dict['y_ang']
-        msg.angular.z = vel_dict['z_ang']
+        msg.linear.x = x_ned
+        msg.linear.y = y_ned
+        msg.linear.z = z_ned
+        msg.angular.x = x_ang_ned
+        msg.angular.y = y_ang_ned
+        msg.angular.z = z_ang_ned
         self.velocity_publisher.publish(msg)
 
     def set_mode(self, mode):
