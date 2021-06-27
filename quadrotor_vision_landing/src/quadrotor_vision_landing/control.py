@@ -101,9 +101,9 @@ class Control:
             self.S = self.H @ self.P @ self.H.T + r
             self.K = self.P @ self.H.T @ np.linalg.inv(self.S)
             self.error = np.array([[x], [y]]) - (self.H @ self.x_hat)
-
             self.x_hat = self.x_hat + (self.K @ self.error)
             self.P = self.P - (self.K @ self.H @ self.P)
+            
             self.last_time = current_time
 
             if not self.kf_initialised:
